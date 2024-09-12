@@ -16,9 +16,27 @@ export const Route = createFileRoute("/texting/$chatId")({
 const abortControllers = new Map<string, AbortController>();
 const followingMessageIds = new Map<string, boolean>();
 
+const showNotification = (persona: string, message: string) => {
+  if (Notification.permission === 'granted') {
+    new Notification(persona, {
+      body: message,
+      silent: false,
+      icon: '/assets/pwa/android-chrome-192x192.png'
+    });
+  } else Notification.requestPermission();
+};
+
 function TextingPage() {
   const { chatId } = Route.useParams();
   const { editMessageLocally, followNewMessages } = useMessageGeneration(chatId);
+
+  const getLastNotifiedMessageId = useCallback(() => {
+    return localStorage.getItem(`lastNotifiedMessageId_${chatId}`);
+  }, [chatId]);
+
+  const setLastNotifiedMessageId = useCallback((messageId: string) => {
+    localStorage.setItem(`lastNotifiedMessageId_${chatId}`, messageId);
+  }, [chatId]);
 
   const utils = api.useUtils();
   const [editingMessageId, setEditingMessageId] = useState<string | undefined>(undefined);
@@ -306,6 +324,24 @@ function TextingPage() {
   if (typeof chatId !== "string") {
     return null;
   }
+
+  useEffect(() => {
+    const messages = messagesQuery.data?.messages;
+    if (!messages || messages.length === 0) return;
+
+    const lastMessage = messages[messages.length - 1];
+    const lastNotifiedMessageId = getLastNotifiedMessageId();
+
+    if (
+        lastMessage &&
+        !lastMessage.isGenerating &&
+        lastMessage.role === 'assistant' &&
+        lastMessage.id !== lastNotifiedMessageId
+    ) {
+      showNotification(messagesQuery.data.chat.personas[0]?.name || 'AI', lastMessage.content);
+      setLastNotifiedMessageId(lastMessage.id);
+    }
+  }, [messagesQuery.data, getLastNotifiedMessageId, setLastNotifiedMessageId]);
 
   return (
     <Texting
